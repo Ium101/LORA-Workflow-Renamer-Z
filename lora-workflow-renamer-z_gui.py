@@ -16,7 +16,7 @@ class WorkflowRenamerGUI:
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
-        # Folder selection
+        # Folder selection and buttons in one row
         self.folder_frame = ttk.Frame(self.main_frame)
         self.folder_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
@@ -24,21 +24,24 @@ class WorkflowRenamerGUI:
         self.folder_entry = ttk.Entry(self.folder_frame, textvariable=self.folder_path, width=60)
         self.folder_entry.grid(row=0, column=0, padx=5)
         
-        self.browse_button = ttk.Button(self.folder_frame, text="Browse", command=self.browse_folder)
-        self.browse_button.grid(row=0, column=1, padx=5)
+        self.button_frame = ttk.Frame(self.folder_frame)
+        self.button_frame.grid(row=0, column=1, padx=5)
         
-        # Process button
-        self.process_button = ttk.Button(self.main_frame, text="Process Files", command=self.start_processing)
-        self.process_button.grid(row=1, column=0, columnspan=2, pady=10)
+        self.browse_button = ttk.Button(self.button_frame, text="Browse", command=self.browse_folder)
+        self.browse_button.pack(side=tk.LEFT, padx=2)
+        
+        # Process button next to Browse button
+        self.process_button = ttk.Button(self.button_frame, text="Process Files", command=self.start_processing)
+        self.process_button.pack(side=tk.LEFT, padx=2)
         
         # Progress bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.main_frame, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+        self.progress_bar.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
         # Output text
         self.output_frame = ttk.Frame(self.main_frame)
-        self.output_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        self.output_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         
         self.output_text = tk.Text(self.output_frame, height=20, width=80, wrap=tk.WORD)
         self.output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
