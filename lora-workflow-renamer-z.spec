@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['rename_workflows_gui.py'],
+    ['lora-workflow-renamer-z.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -22,14 +22,14 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='rename_workflows_gui',
+    name='lora-workflow-renamer-z',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
