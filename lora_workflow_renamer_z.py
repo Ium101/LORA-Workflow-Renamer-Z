@@ -5268,16 +5268,20 @@ def resolve_new_name(folder_path, filename, loras):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _config_path() -> str:
-    """Return the platform-appropriate .ini path."""
-    if platform.system() == "Windows":
-        base = os.environ.get("APPDATA", os.path.expanduser("~"))
-        return os.path.join(base, "LoRA_Workflow_Renamer_Z", "loras_config_windows.ini")
+    """Return the .ini path — always next to the executable / script.
+
+    When frozen by PyInstaller, sys.executable is the .exe / ELF binary itself,
+    so the config lands right beside it.  When running from source, it lands
+    beside the .py file.  Either way the settings travel with the program and
+    no per-user config directory is created.
+    """
+    if getattr(sys, "frozen", False):
+        # PyInstaller sets sys.frozen = True and sys.executable = path to .exe / ELF
+        base = os.path.dirname(sys.executable)
     else:
-        return os.path.join(
-            os.environ.get("XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config")),
-            "LoRA_Workflow_Renamer_Z",
-            "loras_config_linux.ini",
-        )
+        base = os.path.dirname(os.path.abspath(__file__))
+    suffix = "_windows" if platform.system() == "Windows" else "_linux"
+    return os.path.join(base, f"lora_workflow_renamer_z{suffix}.ini")
 
 
 def _load_saved_folder() -> str:
@@ -5346,6 +5350,83 @@ def _save_backup_config(data: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  UI preferences (language + theme) — stored in [UI] section of the .ini
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_ui_prefs() -> dict:
+    """Return {'lang': 'en'|'pt', 'theme': 'dark'|'light'} from the INI."""
+    path = _config_path()
+    defaults = {"lang": "en", "theme": "dark"}
+    if not os.path.isfile(path):
+        return defaults
+    cfg = configparser.ConfigParser()
+    try:
+        cfg.read(path, encoding="utf-8")
+        lang  = cfg.get("UI", "lang",  fallback="en")
+        theme = cfg.get("UI", "theme", fallback="dark")
+        if lang  not in ("en", "pt"):   lang  = "en"
+        if theme not in ("dark", "light"): theme = "dark"
+        return {"lang": lang, "theme": theme}
+    except Exception:
+        return defaults
+
+
+def _save_ui_prefs(lang: str, theme: str) -> None:
+    """Persist language and theme choice into the [UI] section of the .ini."""
+    path = _config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    cfg = configparser.ConfigParser()
+    if os.path.isfile(path):
+        try:
+            cfg.read(path, encoding="utf-8")
+        except Exception:
+            pass
+    if "UI" not in cfg:
+        cfg["UI"] = {}
+    cfg["UI"]["lang"]  = lang
+    cfg["UI"]["theme"] = theme
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            cfg.write(fh)
+    except Exception:
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Theme palettes — dark and light
+# ─────────────────────────────────────────────────────────────────────────────
+
+_THEMES: dict = {
+    "dark": {
+        "bg":           "#1e1e2e",   # window / frame background
+        "fg":           "#cdd6f4",   # normal text
+        "entry_bg":     "#313244",   # Entry / Text background
+        "entry_fg":     "#cdd6f4",   # Entry / Text foreground
+        "select_bg":    "#45475a",   # selection highlight
+        "placeholder":  "#6c7086",   # greyed-out placeholder text
+        "btn_bg":       "#313244",   # ttk button background (via style)
+        "btn_fg":       "#cdd6f4",
+        "btn_active":   "#45475a",
+        "progress_bg":  "#313244",
+        "progress_fg":  "#89b4fa",   # accent blue
+    },
+    "light": {
+        "bg":           "#eff1f5",
+        "fg":           "#4c4f69",
+        "entry_bg":     "#ffffff",
+        "entry_fg":     "#4c4f69",
+        "select_bg":    "#bcc0cc",
+        "placeholder":  "#9ca0b0",
+        "btn_bg":       "#dce0e8",
+        "btn_fg":       "#4c4f69",
+        "btn_active":   "#ccd0da",
+        "progress_bg":  "#dce0e8",
+        "progress_fg":  "#1e66f5",
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  i18n — English / PT-BR string table
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -5356,6 +5437,8 @@ _STRINGS = {
         "process":             "Process Files",
         "cancel":              "Cancel",
         "lang_toggle":         "PT-BR",
+        "theme_dark":          "🌙 Dark",
+        "theme_light":         "☀ Light",
         "folder_placeholder":  "Select a folder…",
         # backup UI
         "lbl_backup":          "Backup Folder:",
@@ -5391,6 +5474,8 @@ _STRINGS = {
         "process":             "Processar Arquivos",
         "cancel":              "Cancelar",
         "lang_toggle":         "EN",
+        "theme_dark":          "🌙 Escuro",
+        "theme_light":         "☀ Claro",
         "folder_placeholder":  "Selecione uma pasta…",
         # backup UI
         "lbl_backup":          "Pasta de Backup:",
@@ -5507,8 +5592,10 @@ class WorkflowRenamerGUI:
         self.root = root
         _apply_window_icon(self.root)
 
-        # Language state — "en" or "pt"
-        self._lang = "en"
+        # Load persisted UI preferences (language + theme)
+        ui_prefs = _load_ui_prefs()
+        self._lang  = ui_prefs["lang"]
+        self._theme = ui_prefs["theme"]
 
         # Load last saved folder (empty string = no default)
         saved = _load_saved_folder()
@@ -5541,12 +5628,19 @@ class WorkflowRenamerGUI:
         )
         self.process_button.pack(side=tk.LEFT, padx=2)
 
-        # Language toggle button — rightmost in the button frame
+        # Language toggle button
         self.lang_button = ttk.Button(
             self.button_frame, text=self._s("lang_toggle"), width=6,
             command=self.toggle_language
         )
         self.lang_button.pack(side=tk.LEFT, padx=(6, 2))
+
+        # Theme toggle button — rightmost in the button frame
+        self.theme_button = ttk.Button(
+            self.button_frame, width=9,
+            command=self.toggle_theme
+        )
+        self.theme_button.pack(side=tk.LEFT, padx=(2, 2))
 
         # ── Row 1: backup controls ────────────────────────────────────────
         backup_outer = ttk.Frame(self.main_frame)
@@ -5618,7 +5712,8 @@ class WorkflowRenamerGUI:
         # Processing flag
         self.is_processing = False
 
-        # Apply initial title and labels
+        # Apply persisted theme, then labels
+        self._apply_theme()
         self._apply_language()
 
     # ── i18n helpers ──────────────────────────────────────────────────────
@@ -5637,15 +5732,90 @@ class WorkflowRenamerGUI:
         else:
             self.process_button.configure(text=self._s("process"))
         self.lang_button.configure(text=self._s("lang_toggle"))
+        # Theme button label reflects what clicking it will switch TO
+        opposite = "light" if self._theme == "dark" else "dark"
+        self.theme_button.configure(text=self._s(f"theme_{opposite}"))
         self.backup_chk.configure(text=self._s("chk_backup"))
         self.backup_lbl.configure(text=self._s("lbl_backup"))
         self.backup_browse_btn.configure(text=self._s("browse_backup"))
+        ph_color = _THEMES[self._theme]["placeholder"]
         if not self.folder_path.get():
-            self.folder_entry.configure(foreground="grey")
+            self.folder_entry.configure(foreground=ph_color)
 
     def toggle_language(self) -> None:
         self._lang = "pt" if self._lang == "en" else "en"
+        _save_ui_prefs(self._lang, self._theme)
         self._apply_language()
+
+    # ── Theme helpers ─────────────────────────────────────────────────────
+
+    def _apply_theme(self) -> None:
+        """Apply the current theme palette to all widgets."""
+        t = _THEMES[self._theme]
+
+        style = ttk.Style(self.root)
+        # Use the built-in 'clam' theme as a neutral base that respects
+        # colour overrides reliably on both Linux and Windows.
+        style.theme_use("clam")
+
+        # Configure ttk styles
+        style.configure(".",
+            background=t["bg"], foreground=t["fg"],
+            fieldbackground=t["entry_bg"],
+            troughcolor=t["progress_bg"],
+            bordercolor=t["select_bg"],
+            darkcolor=t["bg"], lightcolor=t["bg"],
+        )
+        style.configure("TFrame",   background=t["bg"])
+        style.configure("TLabel",   background=t["bg"], foreground=t["fg"])
+        style.configure("TButton",
+            background=t["btn_bg"], foreground=t["btn_fg"],
+            bordercolor=t["select_bg"],
+        )
+        style.map("TButton",
+            background=[("active", t["btn_active"]), ("pressed", t["select_bg"])],
+            foreground=[("disabled", t["placeholder"])],
+        )
+        style.configure("TCheckbutton",
+            background=t["bg"], foreground=t["fg"],
+            indicatorcolor=t["entry_bg"],
+        )
+        style.map("TCheckbutton",
+            background=[("active", t["bg"])],
+        )
+        style.configure("TEntry",
+            fieldbackground=t["entry_bg"], foreground=t["entry_fg"],
+            selectbackground=t["select_bg"], selectforeground=t["fg"],
+            bordercolor=t["select_bg"],
+        )
+        style.configure("Horizontal.TProgressbar",
+            troughcolor=t["progress_bg"], background=t["progress_fg"],
+            bordercolor=t["bg"],
+        )
+        style.configure("TScrollbar",
+            background=t["btn_bg"], troughcolor=t["progress_bg"],
+            arrowcolor=t["fg"],
+        )
+
+        # Root window background
+        self.root.configure(background=t["bg"])
+
+        # tk.Text is not a ttk widget — configure it directly
+        self.output_text.configure(
+            background=t["entry_bg"], foreground=t["entry_fg"],
+            insertbackground=t["fg"],
+            selectbackground=t["select_bg"], selectforeground=t["fg"],
+        )
+
+        # Folder entry placeholder colour
+        ph_color = t["placeholder"] if not self.folder_path.get() else t["entry_fg"]
+        self.folder_entry.configure(foreground=ph_color)
+
+    def toggle_theme(self) -> None:
+        self._theme = "light" if self._theme == "dark" else "dark"
+        _save_ui_prefs(self._lang, self._theme)
+        self._apply_theme()
+        self._apply_language()   # refresh theme button label
 
     # ── Backup helpers ────────────────────────────────────────────────────
 
