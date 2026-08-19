@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================
-#  build.sh — Builds LoRA Workflow Renamer Z with PyInstaller
-#  AND installs desktop / menu shortcuts on Linux
+#  build.sh — Linux/BigLinux/KDE setup for LoRA Workflow Renamer Z
 #
-#  Single-file, GUI-only edition: lora_workflow_renamer_z.py contains
-#  the renaming logic, the Tkinter GUI, and the built-in icon (embedded
-#  as base64 inside the script — no external asset file is needed).
-#  Only one executable is produced (the GUI). A --folder CLI fallback
-#  still exists inside the script for scripting/automation, but this
-#  build script does not produce a separate CLI binary for it.
+#  This does NOT compile a PyInstaller binary and does NOT copy
+#  lora_workflow_renamer_z.py anywhere (not into ~/.local/bin, not
+#  into ~/bin, nowhere). The app always runs directly from the .py
+#  file sitting in this same folder — the Desktop shortcut and the
+#  application-menu / sidebar entry both point straight at it.
+#  (The Windows build, via build.bat, still produces a PyInstaller
+#  .exe separately — that part is unaffected by this script.)
 # =============================================================
 
 set -euo pipefail
@@ -23,16 +23,25 @@ warn()   { echo -e " ${YELLOW}[!!]${RESET}  $*"; }
 err()    { echo -e " ${RED}[ERR]${RESET} $*" >&2; exit 1; }
 
 EXEC_DISPLAY="LoRA Workflow Renamer Z"
-EXEC_NAME="LoRA_Workflow_Renamer_Z"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DESKTOP_FILE_NAME="LoRA_Workflow_Renamer_Z.desktop"
+
+# Resolve the REAL folder this script lives in, following symlinks, so the
+# shortcuts we generate always point at the actual .py file next to
+# build.sh — never at a stale copy that might exist elsewhere on $PATH.
+SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+MAIN="$SCRIPT_DIR/lora_workflow_renamer_z.py"
+
 APP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons"
 DESKTOP_DIR=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
-DESKTOP_FILE_NAME="LoRA_Workflow_Renamer_Z.desktop"
 
-banner "LoRA Workflow Renamer Z | Linux Build Script"
+banner "LoRA Workflow Renamer Z | Linux Setup"
 
-# ── 1. Find Python 3.10+ ──────────────────────────────────────────────────────
+# ── 1. Check source file ──────────────────────────────────────────────────
+[[ -f "$MAIN" ]] || err "lora_workflow_renamer_z.py not found in $SCRIPT_DIR"
+ok "Source file found: $MAIN"
+
+# ── 2. Find Python 3.10+ ────────────────────────────────────────────────────
 PYTHON=""
 try_python() {
     local cmd="$1"
@@ -53,30 +62,7 @@ for cmd in python3 python python3.14 python3.13 python3.12 python3.11 python3.10
 done
 [[ -z "$PYTHON" ]] && err "Python 3.10+ not found."
 
-PY_VER=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-PY_PREFIX=$("$PYTHON" -c "import sys; print(sys.prefix)")
-
-# ── 2. Find libpython ─────────────────────────────────────────────────────────
-banner "Checking libpython shared library"
-LIBPYTHON=""
-LIBPY_NAMES=("libpython${PY_VER}.so.1.0" "libpython${PY_VER}.so")
-LIBPY_DIRS=("$PY_PREFIX/lib" "/usr/lib" "/usr/lib64" "/usr/local/lib"
-            "/usr/lib/x86_64-linux-gnu" "/usr/lib/aarch64-linux-gnu")
-for name in "${LIBPY_NAMES[@]}"; do
-    for dir in "${LIBPY_DIRS[@]}"; do
-        [[ -f "$dir/$name" ]] && LIBPYTHON="$dir/$name" && ok "Found: $LIBPYTHON" && break 2
-    done
-done
-if [[ -z "$LIBPYTHON" ]] && command -v ldconfig &>/dev/null; then
-    for name in "${LIBPY_NAMES[@]}"; do
-        found=$(ldconfig -p 2>/dev/null | grep "$name" | awk '{print $NF}' | head -1)
-        [[ -n "$found" && -f "$found" ]] && LIBPYTHON="$found" && ok "Found via ldconfig: $LIBPYTHON" && break
-    done
-fi
-SPEC_BINARIES="[]"
-[[ -n "$LIBPYTHON" ]] && SPEC_BINARIES="[('$LIBPYTHON', '.')]"
-
-# ── 3. Check tkinter ──────────────────────────────────────────────────────────
+# ── 3. Check tkinter ─────────────────────────────────────────────────────────
 banner "Checking tkinter"
 if ! "$PYTHON" -c "import tkinter" 2>/dev/null; then
     warn "tkinter not found — installing..."
@@ -87,109 +73,58 @@ if ! "$PYTHON" -c "import tkinter" 2>/dev/null; then
 fi
 ok "tkinter available"
 
-# ── 4. Check source file ──────────────────────────────────────────────────────
-[[ -f "lora_workflow_renamer_z.py" ]] || err "lora_workflow_renamer_z.py not found."
-ok "Source file found"
+# ── 4. Make the script directly executable in place ─────────────────────────
+chmod +x "$MAIN"
+ok "$MAIN is now executable"
 
-# ── 5. Virtual environment ────────────────────────────────────────────────────
-banner "Step 1/6 — Virtual environment"
-if [[ ! -d ".venv" ]]; then
-    "$PYTHON" -m venv .venv && ok "Created .venv"
-else
-    .venv/bin/python -c "print(1)" &>/dev/null && info "Reusing .venv" || {
-        warn "Broken .venv — recreating..."; rm -rf .venv; "$PYTHON" -m venv .venv; ok "Recreated .venv"
-    }
-fi
-source .venv/bin/activate
-ok "Virtual environment activated"
+# ── 5. Clean up any stale copy from an older build ───────────────────────────
+#    This setup never copies lora_workflow_renamer_z.py anywhere; it always
+#    runs in place from $SCRIPT_DIR. Remove any leftover copy from a
+#    previous version of this build script so nothing on $PATH can shadow
+#    the real file.
+for stale in \
+    "$HOME/.local/bin/lora_workflow_renamer_z.py" \
+    "$HOME/bin/lora_workflow_renamer_z.py" \
+    "$HOME/.local/share/lora_workflow_renamer_z/lora_workflow_renamer_z.py" \
+    "$HOME/.local/bin/LoRA_Workflow_Renamer_Z" \
+    "$HOME/bin/LoRA_Workflow_Renamer_Z"
+do
+    if [[ -e "$stale" ]] && { [[ ! -f "$MAIN" ]] || [[ "$(realpath "$stale" 2>/dev/null)" != "$MAIN" ]]; }; then
+        echo " Removing stale copy: $stale"
+        rm -f "$stale"
+    fi
+done
+# Also drop any old compiled PyInstaller binary left in this folder from a
+# previous version of this build script — it's no longer produced or used.
+[[ -f "$SCRIPT_DIR/LoRA_Workflow_Renamer_Z" ]] && rm -f "$SCRIPT_DIR/LoRA_Workflow_Renamer_Z" && info "Removed old compiled binary in $SCRIPT_DIR"
 
-# ── 6. Install dependencies ───────────────────────────────────────────────────
-banner "Step 2/6 — Installing dependencies"
-pip install --quiet --upgrade pip
-pip install --quiet --upgrade pyinstaller pillow
-ok "PyInstaller $(pyinstaller --version) + Pillow ready"
-
-# ── 7. Extract built-in icon ───────────────────────────────────────────────────
-banner "Step 3/6 — Extracting built-in icon"
-ICON_TMP_DIR="$(mktemp -d)"
-python "lora_workflow_renamer_z.py" --extract-icons "$ICON_TMP_DIR" \
-    || err "Icon extraction failed (lora_workflow_renamer_z.py --extract-icons)."
-[[ -f "$ICON_TMP_DIR/lora_workflow_renamer_z.svg" ]] || err "Extracted SVG icon missing."
-ok "Icon extracted to temp dir: $ICON_TMP_DIR"
-
-# ── 8. Clean previous build ───────────────────────────────────────────────────
-banner "Step 4/6 — Cleaning previous build artefacts"
-[[ -d "build" ]]                   && rm -rf "build"                   && info "Removed build/"
-[[ -d "__pycache__" ]]              && rm -rf "__pycache__"            && info "Removed __pycache__/"
-[[ -f "$EXEC_NAME" ]]              && rm -f  "$EXEC_NAME"              && info "Removed old executable"
-[[ -f "$EXEC_NAME.spec" ]]         && rm -f  "$EXEC_NAME.spec"         && info "Removed spec"
-ok "Clean done"
-
-# ── 9. Spec + compile ────────────────────────────────────────────────────────
-banner "Step 5/6 — Generating spec and compiling"
-cat > "$EXEC_NAME.spec" << SPEC
-# -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_submodules
-block_cipher = None
-a = Analysis(
-    ['lora_workflow_renamer_z.py'],
-    pathex=['.'],
-    binaries=${SPEC_BINARIES},
-    datas=[],
-    hiddenimports=(
-        collect_submodules('tkinter') +
-        ['PIL', 'PIL.Image']
-    ),
-    hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
-    cipher=block_cipher, noarchive=False,
-)
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-exe = EXE(
-    pyz, a.scripts, a.binaries, a.zipfiles, a.datas,
-    name='${EXEC_NAME}',
-    debug=False, bootloader_ignore_signals=False, strip=False,
-    upx=False, upx_exclude=[], runtime_tmpdir=None, console=False,
-    disable_windowed_traceback=False, target_arch=None,
-    codesign_identity=None, entitlements_file=None,
-    icon='${ICON_TMP_DIR}/lora_workflow_renamer_z.ico',
-)
-SPEC
-
-pyinstaller --distpath . "$EXEC_NAME.spec" || err "PyInstaller failed."
-
-# ── 10. Verify output ──────────────────────────────────────────────────────────
-banner "Step 6/6 — Verifying output"
-[[ -f "$EXEC_NAME" ]] && chmod +x "$EXEC_NAME" && ok "$EXEC_NAME created" || err "Binary not found."
-
-# ── 11. Install icon + desktop/menu shortcut ──────────────────────────────────
-banner "Installing icon and shortcuts"
-
+# ── 6. Extract built-in icon (embedded in the script, no Pillow needed) ─────
+banner "Installing icon"
 mkdir -p "$APP_DIR" "$DESKTOP_DIR" "$ICON_DIR"
+"$PYTHON" "$MAIN" --extract-icons "$ICON_DIR" \
+    || err "Icon extraction failed (lora_workflow_renamer_z.py --extract-icons)."
+mv -f "$ICON_DIR/lora_workflow_renamer_z.svg" "$ICON_DIR/LoRA_Workflow_Renamer_Z.svg"
+rm -f "$ICON_DIR/lora_workflow_renamer_z.ico" "$ICON_DIR/lora_workflow_renamer_z.png"
+ICON_FILE="$ICON_DIR/LoRA_Workflow_Renamer_Z.svg"
+ok "Icon installed to $ICON_FILE"
 
-EXE_PATH="$SCRIPT_DIR/$EXEC_NAME"
-
-# Icon — vector SVG, extracted from the script's own embedded data (Step 3/6)
-cp "$ICON_TMP_DIR/lora_workflow_renamer_z.svg" "$ICON_DIR/$EXEC_NAME.svg"
-ok "Icon installed to $ICON_DIR/$EXEC_NAME.svg"
-rm -rf "$ICON_TMP_DIR"
-
-# Desktop + menu entry (heredoc — no variable quoting issues). Exec points
-# at the executable in THIS folder (where it was just built). Name= uses
-# spaces (no underscores) since that's the label shown in menus/Desktop —
-# the .desktop filename itself and the binary keep their underscores.
+# ── 7. Desktop + application-menu entry ──────────────────────────────────────
+#    Exec runs the .py file directly, in place, via the same interpreter
+#    found above — never a copy, never a compiled binary.
+banner "Creating shortcuts"
 cat > "$APP_DIR/$DESKTOP_FILE_NAME" << DESKTOPEOF
 [Desktop Entry]
 Name=$EXEC_DISPLAY
 Comment=Rename ComfyUI workflow JSON files based on contained LoRAs
-Exec=$EXE_PATH
-Icon=$ICON_DIR/$EXEC_NAME.svg
+Exec=$PYTHON "$MAIN"
+Icon=$ICON_FILE
 Terminal=false
 Type=Application
 Categories=Utility;FileTools;
 DESKTOPEOF
 chmod +x "$APP_DIR/$DESKTOP_FILE_NAME"
 
-# Desktop shortcut (user's Desktop folder)
+# Desktop shortcut (user's Desktop folder) — same file, same Exec target
 cp "$APP_DIR/$DESKTOP_FILE_NAME" "$DESKTOP_DIR/$DESKTOP_FILE_NAME"
 chmod 755 "$DESKTOP_DIR/$DESKTOP_FILE_NAME"
 
@@ -201,19 +136,15 @@ command -v update-desktop-database &>/dev/null && { update-desktop-database "$AP
 if   command -v kbuildsycoca6 &>/dev/null; then kbuildsycoca6 &>/dev/null || true
 elif command -v kbuildsycoca5 &>/dev/null; then kbuildsycoca5 &>/dev/null || true
 fi
-ok "Desktop and application-menu shortcuts created (linked to: $EXE_PATH)"
-
-deactivate
-rm -rf .venv                   && ok "Removed .venv"
-rm -rf build                   && ok "Removed build/"
-rm -rf __pycache__             && ok "Removed __pycache__/"
-rm -f  "$EXEC_NAME.spec"       && ok "Removed $EXEC_NAME.spec"
+ok "Desktop and application-menu shortcuts created (linked to: $MAIN)"
 
 echo ""
 echo -e "${GREEN}${BOLD} ============================================"
-echo "  BUILD SUCCESSFUL"
+echo "  SETUP COMPLETE"
 echo -e " ============================================${RESET}"
 echo ""
-echo -e "  Executable : ${CYAN}$EXE_PATH${RESET}"
-echo -e "  Run        : ${BOLD}\"$EXE_PATH\"${RESET}"
+echo -e "  Script  : ${CYAN}$MAIN${RESET}"
+echo -e "  Run     : ${BOLD}\"$MAIN\"${RESET}   (or via the Desktop / menu shortcut)"
+echo -e "  Menu    : $APP_DIR/$DESKTOP_FILE_NAME"
+echo -e "  Desktop : $DESKTOP_DIR/$DESKTOP_FILE_NAME"
 echo ""
