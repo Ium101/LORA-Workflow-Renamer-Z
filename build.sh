@@ -23,7 +23,7 @@ warn()   { echo -e " ${YELLOW}[!!]${RESET}  $*"; }
 err()    { echo -e " ${RED}[ERR]${RESET} $*" >&2; exit 1; }
 
 EXEC_DISPLAY="LoRA Workflow Renamer Z"
-DESKTOP_FILE_NAME="LoRA_Workflow_Renamer_Z.desktop"
+DESKTOP_FILE_NAME="LoRA Workflow Renamer Z.desktop"
 
 # Resolve the REAL folder this script lives in, following symlinks, so the
 # shortcuts we generate always point at the actual .py file next to
