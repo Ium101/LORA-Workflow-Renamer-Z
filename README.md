@@ -52,7 +52,7 @@ build.bat
 
 ## Want more?
 
-This repository is the **simple, free version**. I also maintain a **more complete version of this program that is private** and not publicly available. If you're interested, feel free to reach out through my [GitHub profile](https://github.com/Ium101).
+This repository is the **simple, free version**. I also maintain a **more complete version of this program that is for my personal use but may be sold**. If you're interested, feel free to reach out through my [GitHub profile](https://github.com/Ium101) for dealing it.
 
 ## License
 
@@ -60,4 +60,4 @@ Released under the [BSD 2-Clause License](LICENSE).
 
 ---
 
-Made by [Ium101](https://github.com/Ium101) · Part of the **Z** utilities suite
+Made by [Ium101](https://github.com/Ium101)
